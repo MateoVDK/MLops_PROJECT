@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackjack RL Advisor</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+
+        <h1>♠ Blackjack RL Advisor ♠</h1>
+        <p class="subtitle">
+            Get AI recommendations for your next move.
+        </p>
+
+        <div class="card">
+
+            <div class="input-group">
+                <label for="player-sum">Player Sum</label>
+                <input type="number" id="player-sum" placeholder="e.g. 16">
+            </div>
+
+            <div class="input-group">
+                <label for="dealer-card">Dealer Card</label>
+                <input type="number" id="dealer-card" placeholder="e.g. 10">
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="usable-ace">
+                <label for="usable-ace">Usable Ace</label>
+            </div>
+
+            <button id="predict-btn">
+                Get Recommendation
+            </button>
+
+        </div>
+
+        <div class="result-card">
+
+            <h2>Recommendation</h2>
+
+            <div id="result">
+                Waiting for input...
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+
+</body>
+</html>
