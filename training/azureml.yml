@@ -1,0 +1,11 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+command: >
+  python train.py
+code: .
+environment: azureml:blackjack-env:1
+compute: azureml:cpu-cluster
+experiment_name: blackjack-training
+outputs:
+  policy:
+    mode: upload
+    path: outputs/policy.pkl
