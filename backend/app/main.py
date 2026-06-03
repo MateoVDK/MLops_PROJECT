@@ -1,16 +1,10 @@
 from fastapi import FastAPI
-from app.schemas import GameState, PredictionResponse
+from app.schemas import GameState
 from app.dummy_model import predict_action
 
-app = FastAPI(title="Blackjack RL API")
+app = FastAPI()
 
-
-@app.get("/")
-def root():
-    return {"message": "Blackjack RL API is running"}
-
-
-@app.post("/predict", response_model=PredictionResponse)
+@app.post("/predict")
 def predict(state: GameState):
 
     action, confidence = predict_action(
