@@ -1,7 +1,6 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
 name: blackjack-env
-dependencies:
-  - python=3.10
-  - pip:
-      - gymnasium
-      - numpy
-      - cloudpickle
+version: 1
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+conda_file: conda.yaml
+description: Environment for blackjack training
