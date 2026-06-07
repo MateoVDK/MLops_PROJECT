@@ -9,3 +9,9 @@ class GameState(BaseModel):
 class PredictionResponse(BaseModel):
     action: str
     confidence: float
+
+class GameState(BaseModel):
+    player_sum: int
+    dealer_card: int
+    usable_ace: bool
+    premium: bool = False
