@@ -88,3 +88,21 @@ button:hover {
     font-weight: bold;
     color: #58a6ff;
 }
+
+.premium-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(90deg, #f7d774, #e5b93c);
+    border: none;
+    border-radius: 8px;
+    color: #000;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.premium-btn:hover {
+    background: linear-gradient(90deg, #ffe48a, #f0c44a);
+    transform: scale(1.03);
+}

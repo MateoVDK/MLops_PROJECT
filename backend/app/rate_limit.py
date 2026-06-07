@@ -19,7 +19,7 @@ def check_rate_limit(request: Request, premium: bool):
     if len(timestamps) >= RATE_LIMIT:
         raise HTTPException(
             status_code=429,
-            detail="Rate limit exceeded: max 10 requests per hour"
+            detail="max 10 requests per hour for free users"
         )
 
     timestamps.append(now)
