@@ -12,7 +12,7 @@ if errorlevel 1 (
 )
 
 echo Starting Blackjack RL Advisor...
-echo Open: http://localhost:8080
+echo Open: http://localhost:8088
 echo API docs: http://localhost:8000/docs
 
 docker compose up --build
