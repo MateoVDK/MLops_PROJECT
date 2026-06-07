@@ -4,105 +4,204 @@
     box-sizing: border-box;
 }
 
+html {
+    font-size: 82%;
+}
+
+
 body {
     background: #0d1117;
-    color: white;
+    color: #fff;
     font-family: Arial, Helvetica, sans-serif;
 
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
 
     min-height: 100vh;
+    padding: 2rem;
+}
+.card {
+    background: rgba(22, 27, 34, 0.8);
+    backdrop-filter: blur(0.5rem);
+    padding: 2rem;
+    border-radius: 1.2rem;
+    border: 0.1rem solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0.4rem 1.2rem rgba(0,0,0,0.2);
 }
 
 .container {
-    width: 450px;
+    max-width: 120rem;
+    width: 100%;
 }
+.card button {
+    margin-top: 2.5rem;
+}
+
 
 h1 {
     text-align: center;
-    margin-bottom: 10px;
+    margin-bottom: 1rem;
+    font-size: 3rem;
+    margin-top: 2rem;
 }
 
 .subtitle {
     text-align: center;
     color: #aaa;
-    margin-bottom: 30px;
+    margin-bottom: 7rem;
+    font-size: 1.4rem;
 }
 
+/* --- GRID LAYOUT --- */
+.layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+/* --- CARDS --- */
 .card,
-.result-card {
-    background: #161b22;
-    padding: 25px;
-    border-radius: 12px;
-    margin-bottom: 20px;
+.result-card,
+.explanation-card,
+.confidence-card {
+    background: rgba(22, 27, 34, 0.8);
+    backdrop-filter: blur(0.5rem);
+    padding: 2rem;
+    border-radius: 1.2rem;
+    border: 0.1rem solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0.4rem 1.2rem rgba(0,0,0,0.2);
+    margin-bottom: 2rem;
 }
 
+/* --- INPUTS --- */
 .input-group {
     display: flex;
     flex-direction: column;
-    margin-bottom: 15px;
+    margin-bottom: 1.5rem;
 }
 
 label {
-    margin-bottom: 6px;
+    margin-bottom: 0.6rem;
+    font-size: 1.4rem;
 }
 
 input[type="number"] {
-    padding: 10px;
-    border-radius: 8px;
+    padding: 1rem;
+    border-radius: 0.8rem;
     border: none;
     outline: none;
+    background: #0f1620;
+    color: #fff;
+    font-size: 1.4rem;
 }
 
 .checkbox-group {
-    margin-bottom: 20px;
+    margin-bottom: 2rem;
+    font-size: 1.4rem;
 }
 
+/* --- BUTTONS --- */
 button {
     width: 100%;
-    padding: 12px;
-
+    padding: 1.2rem;
     background: #238636;
     color: white;
-
     border: none;
-    border-radius: 8px;
-
+    border-radius: 0.8rem;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1.6rem;
+    transition: 0.2s;
 }
 
 button:hover {
     background: #2ea043;
 }
 
-.result-card h2 {
-    margin-bottom: 15px;
-}
-
-#result {
-    text-align: center;
-    font-size: 28px;
-    font-weight: bold;
-    color: #58a6ff;
-}
-
 .premium-btn {
-    margin-top: 10px;
-    width: 100%;
-    padding: 12px;
+    margin-top: 1rem;
     background: linear-gradient(90deg, #f7d774, #e5b93c);
-    border: none;
-    border-radius: 8px;
     color: #000;
     font-weight: bold;
-    cursor: pointer;
-    transition: 0.2s;
 }
 
 .premium-btn:hover {
     background: linear-gradient(90deg, #ffe48a, #f0c44a);
     transform: scale(1.03);
 }
+
+/* --- RESULT --- */
+.result-card {
+    border-left: 0.5rem solid #58a6ff;
+}
+
+.result-card h2,
+.explanation-card h2 {
+    margin-bottom: 1.5rem;
+    font-size: 2rem;
+}
+
+#result {
+    text-align: center;
+    font-size: 2.4rem;
+    font-weight: bold;
+    color: #58a6ff;
+}
+
+/* --- EXPLANATION --- */
+.explanation-card {
+    border-left: 0.5rem solid #ffcc00;
+}
+
+#explanation {
+    font-size: 1.4rem;
+    color: #ddd;
+    line-height: 1.5;
+}
+
+/* --- RESPONSIVE --- */
+@media (max-width: 768px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* CONFIDENCE CARD */
+.confidence-card {
+    background: rgba(22, 27, 34, 0.8);
+    backdrop-filter: blur(0.5rem);
+    padding: 2rem;
+    border-radius: 1.2rem;
+    border: 0.1rem solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0.4rem 1.2rem rgba(0,0,0,0.2);
+    margin-top: 2rem;
+    border-left: 0.5rem solid #d31e1e;
+}
+
+.confidence-card h2 {
+    margin-bottom: 1.5rem;
+    font-size: 2rem;
+}
+
+.confidence-bar-bg {
+    width: 100%;
+    height: 1.6rem;
+    background: #333;
+    border-radius: 1rem;
+    overflow: hidden;
+}
+
+.confidence-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #d31e1e, #d71b1b);
+    transition: width 0.4s ease;
+}
+
+.confidence-label {
+    margin-top: 1rem;
+    font-size: 1.4rem;
+    text-align: right;
+    color: #d31e1e;
+}
+

@@ -1,5 +1,6 @@
 let isPremium = false;
 
+// Toggle premium on/off
 document.getElementById("premium-btn").addEventListener("click", () => {
     isPremium = !isPremium;
 
@@ -32,23 +33,52 @@ document.getElementById("predict-btn").addEventListener("click", async () => {
 
         const data = await response.json();
 
-        // ⭐ Handle rate limit errors (429)
+        // Handle rate limit errors
         if (!response.ok) {
             document.getElementById("result").textContent = data.detail;
+
+            // Reset explanation + confidence bar
+            document.getElementById("explanation").textContent =
+                "Premium feature — buy Premium to unlock detailed reasoning.";
+
+            document.getElementById("confidence-bar").style.width = "0%";
+            document.getElementById("confidence-label").textContent = "Premium only";
+
             return;
         }
 
-        // ⭐ Show confidence only for premium users
+        // ⭐ Update recommendation (NO confidence here anymore)
+        document.getElementById("result").textContent = data.action;
+
+        // ⭐ Update confidence bar (premium only)
         if (data.confidence !== undefined) {
-            document.getElementById("result").textContent =
-                `${data.action} (${Math.round(data.confidence * 100)}%)`;
+            const pct = Math.round(data.confidence * 100);
+            document.getElementById("confidence-bar").style.width = pct + "%";
+            document.getElementById("confidence-label").textContent = pct + "%";
         } else {
-            document.getElementById("result").textContent = data.action;
+            // Free users see empty bar
+            document.getElementById("confidence-bar").style.width = "0%";
+            document.getElementById("confidence-label").textContent = "Premium only";
+        }
+
+        // ⭐ Update explanation
+        if (data.explanation !== undefined) {
+            document.getElementById("explanation").textContent = data.explanation;
+        } else {
+            document.getElementById("explanation").textContent =
+                "Premium feature — buy Premium to unlock detailed reasoning.";
         }
 
     } catch (error) {
         console.error(error);
-        document.getElementById("result").textContent =
-            "Could not contact API";
+
+        document.getElementById("result").textContent = "Could not contact API";
+
+        // Reset explanation + confidence bar
+        document.getElementById("explanation").textContent =
+            "Premium feature — buy Premium to unlock detailed reasoning.";
+
+        document.getElementById("confidence-bar").style.width = "0%";
+        document.getElementById("confidence-label").textContent = "Premium only";
     }
 });
