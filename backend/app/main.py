@@ -16,9 +16,12 @@ app.add_middleware(
 )
 
 @app.post("/predict")
+@app.post("/api/predict")
 def predict(state: GameState, request: Request):
 
-    check_rate_limit(request, state.premium)
+    allowed, detail = check_rate_limit(request, state.premium)
+    if not allowed:
+        return {"error": detail}
 
     action, confidence = predict_action(
         state.player_sum,
