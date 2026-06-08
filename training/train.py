@@ -3,6 +3,7 @@ import pickle
 import gymnasium as gym
 import numpy as np
 from collections import defaultdict
+from google.cloud import storage
 
 
 def main():
@@ -76,16 +77,21 @@ def main():
         "epsilon_decay_rate": epsilon_decay_rate,
     }
 
-    # local save
+    
+    # save locally
     local_path = "policy.pkl"
-
     with open(local_path, "wb") as f:
         pickle.dump(artifact, f)
 
     print("Saved locally")
 
-    # upload to your bucket
-    bucket_path = "gs://kenneth-vertex-bucket/model/policy.pkl"
-    os.system(f"gsutil cp {local_path} {bucket_path}")
+    # upload to GCS (RELIABLE)
+    client = storage.Client()
+    bucket = client.bucket("kenneth-vertex-bucket-mlops")
+    blob = bucket.blob("model/policy.pkl")
 
-    print(f"Model uploaded to: {bucket_path}")
+    blob.upload_from_filename(local_path)
+
+    print("Model uploaded to: gs://kenneth-vertex-bucket-mlops/model/policy.pkl")
+
+main()

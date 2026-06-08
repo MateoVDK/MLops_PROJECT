@@ -7,5 +7,6 @@ setup(
     install_requires=[
         "gymnasium",
         "numpy",
+        "google-cloud-storage",
     ],
 )

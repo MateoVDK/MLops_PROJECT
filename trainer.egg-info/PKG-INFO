@@ -3,4 +3,5 @@ Name: trainer
 Version: 0.1
 Requires-Dist: gymnasium
 Requires-Dist: numpy
+Requires-Dist: google-cloud-storage
 Dynamic: requires-dist
