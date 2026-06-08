@@ -13,11 +13,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Azure Login
-        uses: azure/login@v1
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Submit Azure ML training job
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: "beta"
+
+      - name: Submit Vertex AI training job
         run: |
-          az ml job create -f training/azureml_job.yml
+          gcloud ai custom-jobs create \
+            --region=europe-west1 \
+            --display-name=blackjack-training \
+            --config=training/vertex-job.yaml

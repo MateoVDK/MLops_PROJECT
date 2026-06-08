@@ -1,5 +1,5 @@
 from time import time
-from fastapi import Request, HTTPException
+from fastapi import Request
 
 RATE_LIMIT = 10
 WINDOW = 3600
@@ -7,8 +7,9 @@ WINDOW = 3600
 request_log = {}
 
 def check_rate_limit(request: Request, premium: bool):
+    # Premium users have unlimited access
     if premium:
-        return  # unlimited access
+        return True, None
 
     ip = request.client.host
     now = time()
@@ -17,10 +18,9 @@ def check_rate_limit(request: Request, premium: bool):
     timestamps = [t for t in timestamps if now - t < WINDOW]
 
     if len(timestamps) >= RATE_LIMIT:
-        raise HTTPException(
-            status_code=429,
-            detail="max 10 requests per hour for free users"
-        )
+        return False, "max 10 requests per hour for free users"
 
     timestamps.append(now)
     request_log[ip] = timestamps
+
+    return True, None
