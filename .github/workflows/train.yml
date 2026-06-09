@@ -1,17 +1,36 @@
-name: Train Model
+name: Vertex AI Training
 
 on:
   push:
+    branches:
+      - main
+      - master
     paths:
       - "training/**"
+      - "setup.py"
+      - ".github/workflows/train.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vertex-training-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+  VERTEX_BUCKET: ${{ secrets.GCP_VERTEX_BUCKET || vars.GCP_VERTEX_BUCKET || 'kenneth-vertex-bucket-mlops' }}
 
 jobs:
   train:
+    name: Submit Vertex AI training job
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -21,12 +40,57 @@ jobs:
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          install_components: "beta"
+          project_id: ${{ env.PROJECT_ID }}
 
-      - name: Submit Vertex AI training job
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build trainer package
         run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip setuptools wheel
+          rm -rf dist build trainer.egg-info
+          python setup.py sdist --dist-dir dist
+          ls -la dist
+
+      - name: Upload trainer package to Cloud Storage
+        run: |
+          set -euo pipefail
+          BUCKET="${VERTEX_BUCKET#gs://}"
+          PACKAGE_URI="gs://${BUCKET}/packages/trainer-${GITHUB_SHA}.tar.gz"
+          MODEL_OUTPUT_URI="gs://${BUCKET}/model/policy-${GITHUB_SHA}.pkl"
+
+          gsutil cp dist/trainer-*.tar.gz "${PACKAGE_URI}"
+
+          echo "PACKAGE_URI=${PACKAGE_URI}" >> "${GITHUB_ENV}"
+          echo "MODEL_OUTPUT_URI=${MODEL_OUTPUT_URI}" >> "${GITHUB_ENV}"
+
+      - name: Submit Vertex AI custom training job
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          cat > /tmp/vertex-job.yml <<EOF_JOB
+          displayName: blackjack-training-${SHORT_SHA}
+          jobSpec:
+            workerPoolSpecs:
+              - machineSpec:
+                  machineType: n1-standard-4
+                replicaCount: 1
+                pythonPackageSpec:
+                  executorImageUri: us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-12:latest
+                  packageUris:
+                    - ${PACKAGE_URI}
+                  pythonModule: training.train
+                  args:
+                    - --output_path=${MODEL_OUTPUT_URI}
+          EOF_JOB
+
+          cat /tmp/vertex-job.yml
+
           gcloud ai custom-jobs create \
-            --region=europe-west1 \
-            --display-name=blackjack-training \
-            --config=training/vertex-job.yaml
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --config=/tmp/vertex-job.yml

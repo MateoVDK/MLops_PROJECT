@@ -1,2 +1,3 @@
-gymnasuim
+gymnasium
 numpy
+google-cloud-storage
