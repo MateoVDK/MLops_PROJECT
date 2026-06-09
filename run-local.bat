@@ -4,7 +4,13 @@ setlocal
 REM Always use the folder where this .bat file is located as the project root
 set "ROOT=%~dp0"
 
-REM Check that the expected folders exist
+if not exist "%ROOT%docker-compose.yml" (
+    echo Could not find docker-compose.yml
+    echo Put this file in the root of MLops_PROJECT and run it again.
+    pause
+    exit /b 1
+)
+
 if not exist "%ROOT%backend\app\main.py" (
     echo Could not find backend\app\main.py
     echo Put this file in the root of MLops_PROJECT and run it again.
@@ -19,28 +25,38 @@ if not exist "%ROOT%frontend\index.html" (
     exit /b 1
 )
 
-REM Check Python
-where python >nul 2>nul
+where docker >nul 2>nul
 if errorlevel 1 (
-    echo Python was not found in PATH.
-    echo Install Python or enable "Add Python to PATH", then try again.
+    echo Docker was not found in PATH.
+    echo Install or open Docker Desktop, then run this file again.
     pause
     exit /b 1
 )
 
-echo Starting backend API on http://127.0.0.1:8000
-echo Starting frontend on http://127.0.0.1:5500
+docker compose version >nul 2>nul
+if errorlevel 1 (
+    echo Docker Compose v2 was not found.
+    echo Update Docker Desktop or install the Docker Compose plugin, then try again.
+    pause
+    exit /b 1
+)
 
-REM Backend: equivalent to running this from the backend folder:
-REM uvicorn app.main:app --reload
-start "Backend API" /D "%ROOT%backend" cmd /k "python -m uvicorn app.main:app --reload"
+docker info >nul 2>nul
+if errorlevel 1 (
+    echo Docker is installed, but the Docker engine is not running.
+    echo Open Docker Desktop and wait until it has fully started, then run this file again.
+    pause
+    exit /b 1
+)
 
-REM Frontend: equivalent to running this from the frontend folder:
-REM python -m http.server 5500
-start "Frontend Server" /D "%ROOT%frontend" cmd /k "python -m http.server 5500"
+echo Starting everything needed for Blackjack RL Advisor...
+echo Frontend: http://127.0.0.1:8088
+echo API docs: http://127.0.0.1:8000/docs
+echo Database: postgres container managed by docker compose
 
-REM Give the servers a moment to start, then open the frontend
-timeout /t 2 /nobreak >nul
-start "" "http://127.0.0.1:5500"
+start "MLops Docker Compose" /D "%ROOT%" cmd /k "docker compose up --build"
+
+timeout /t 8 /nobreak >nul
+start "" "http://127.0.0.1:8088"
 
 endlocal

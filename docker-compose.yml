@@ -1,13 +1,37 @@
 services:
-
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: dockerfile
     ports:
-      - "8080:80"
+      - "8088:80"
     depends_on:
-      - api-service
+      api-service:
+        condition: service_started
 
   api-service:
     build: ./backend
     ports:
       - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

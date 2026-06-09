@@ -1,13 +1,13 @@
-from fastapi import FastAPI, Request, Depends
-from sqlalchemy.orm import Session
-from app.schemas import GameState
-from app.dummy_model import predict_action
-from app.rate_limit import check_rate_limit
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from app.explaination import generate_explanation
-from app.database import get_db, init_db
-from app.models import Prediction
+from sqlalchemy.orm import Session
 
+from app.database import get_db, init_db
+from app.explaination import generate_explanation
+from app.model import get_policy_decision, model_metadata
+from app.models import Prediction
+from app.rate_limit import check_rate_limit
+from app.schemas import GameState
 
 app = FastAPI()
 
@@ -19,71 +19,81 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/health")
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "model_loaded": True, "model_metadata": model_metadata}
+
+
 @app.post("/predict")
 @app.post("/api/predict")
 def predict(state: GameState, request: Request, db: Session = Depends(get_db)):
-
     allowed, detail = check_rate_limit(request, state.premium)
     if not allowed:
-        return {"error": detail}
+        raise HTTPException(status_code=429, detail=detail)
 
-    action, confidence = predict_action(
+    decision = get_policy_decision(
         state.player_sum,
         state.dealer_card,
-        state.usable_ace
+        state.usable_ace,
     )
 
+    action = decision["action"]
+    confidence = decision["confidence"]
+
+    prediction_payload = {
+    "player_sum": state.player_sum,
+    "dealer_card": state.dealer_card,
+    "usable_ace": state.usable_ace,
+    "action": action,
+    "action_code": decision["action_code"],
+    "confidence": confidence,
+    "premium": state.premium,
+    "policy_found": decision["policy_found"],
+    "policy_state": str(decision["state"]),
+    }
+
     try:
-        pred = Prediction(
-            player_sum=state.player_sum,
-            dealer_card=state.dealer_card,
-            usable_ace=state.usable_ace,
-            action=action,
-            confidence=confidence,
-            premium=state.premium,
-        )
-        db.add(pred)
+        prediction_log = Prediction(**prediction_payload)
+        db.add(prediction_log)
         db.commit()
-    except Exception as e:
-        print("DB logging error:", e)
-        # Try to initialize DB tables and retry once
+    except Exception as error:
+        print("DB logging error:", error)
         try:
             db.rollback()
         except Exception:
             pass
+
         try:
             init_db()
-            db.add(pred)
+            prediction_log = Prediction(**prediction_payload)
+            db.add(prediction_log)
             db.commit()
-        except Exception as e2:
-            print("DB retry failed:", e2)
+        except Exception as retry_error:
+            print("DB retry failed:", retry_error)
 
-    # Only premium users get explanations
     if state.premium:
         explanation = generate_explanation(
             state.player_sum,
             state.dealer_card,
             state.usable_ace,
             action,
-            confidence
+            confidence,
         )
 
         return {
             "action": action,
             "confidence": confidence,
-            "explanation": explanation
+            "explanation": explanation,
         }
 
     return {"action": action}
 
 
-
 @app.on_event("startup")
 def on_startup():
-    # ensure tables exist
     try:
         init_db()
     except Exception:
         print("Failed to initialize DB on startup")
-
-
