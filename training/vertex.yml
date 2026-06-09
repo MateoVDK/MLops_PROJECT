@@ -7,7 +7,7 @@ jobSpec:
       pythonPackageSpec:
         executorImageUri: us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-12:latest
         packageUris:
-          - gs://kenneth-vertex-bucket/packages/blackjack_trainer-0.1.tar.gz
-        pythonModule: train
+          - gs://YOUR_BUCKET/packages/trainer.tar.gz
+        pythonModule: training.train
         args:
-          - --output_path=gs://kenneth-vertex-bucket/policy/policy.pkl
+          - --output_path=gs://YOUR_BUCKET/model/policy.pkl

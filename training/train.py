@@ -1,12 +1,41 @@
+import argparse
 import os
 import pickle
+from collections import defaultdict
+
 import gymnasium as gym
 import numpy as np
-from collections import defaultdict
 from google.cloud import storage
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output_path",
+        default=os.getenv("AIP_MODEL_DIR", "gs://kenneth-vertex-bucket-mlops/model/policy.pkl"),
+        help="GCS path where the trained policy artifact should be uploaded.",
+    )
+    return parser.parse_args()
+
+
+def upload_to_gcs(local_path, output_path):
+    if not output_path.startswith("gs://"):
+        raise ValueError("output_path must be a GCS URI starting with gs://")
+
+    path_without_scheme = output_path[5:]
+    bucket_name, blob_name = path_without_scheme.split("/", 1)
+
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(local_path)
+
+    print(f"Model uploaded to: {output_path}")
+
+
 def main():
+    args = parse_args()
+
     # setting up environment
     env = gym.make("Blackjack-v1")
     env.reset()
@@ -70,6 +99,7 @@ def main():
 
     artifact = {
         "policy": policy,
+        "q_values": dict(Q),
         "episodes": episodes,
         "gamma": gamma,
         "epsilon_start": epsilon_start,
@@ -77,7 +107,6 @@ def main():
         "epsilon_decay_rate": epsilon_decay_rate,
     }
 
-    
     # save locally
     local_path = "policy.pkl"
     with open(local_path, "wb") as f:
@@ -85,13 +114,8 @@ def main():
 
     print("Saved locally")
 
-    # upload to GCS (RELIABLE)
-    client = storage.Client()
-    bucket = client.bucket("kenneth-vertex-bucket-mlops")
-    blob = bucket.blob("model/policy.pkl")
+    upload_to_gcs(local_path, args.output_path)
 
-    blob.upload_from_filename(local_path)
 
-    print("Model uploaded to: gs://kenneth-vertex-bucket-mlops/model/policy.pkl")
-
-main()
+if __name__ == "__main__":
+    main()

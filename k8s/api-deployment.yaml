@@ -15,7 +15,10 @@ spec:
     spec:
       containers:
         - name: api
-          image: api:latest
-          imagePullPolicy: Never
+          image: blackjack-api:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: postgresql://postgres:postgres@postgres-service:5432/postgres
