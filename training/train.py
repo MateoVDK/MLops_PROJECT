@@ -3,83 +3,95 @@ import pickle
 import gymnasium as gym
 import numpy as np
 from collections import defaultdict
-
-# setting up environment
-env = gym.make("Blackjack-v1")
-env.reset()
-
-# training
-episodes = 10_000_000
-gamma = 1.0
-
-epsilon_start = 1.0
-epsilon_end = 0.05
-epsilon_decay_rate = 0.9999
-
-nA = env.action_space.n
-
-Q = defaultdict(lambda: np.zeros(nA, dtype=np.float64))
-N = defaultdict(lambda: np.zeros(nA, dtype=np.int64))
+from google.cloud import storage
 
 
-def get_epsilon(episode):
-    return max(epsilon_end, epsilon_start * (epsilon_decay_rate ** episode))
+def main():
+    # setting up environment
+    env = gym.make("Blackjack-v1")
+    env.reset()
 
+    # training
+    episodes = 10_000_000
+    gamma = 1.0
 
-def epsilon_greedy_probs(state, epsilon):
-    probs = np.ones(nA) * (epsilon / nA)
-    best_action = np.argmax(Q[state])
-    probs[best_action] += 1.0 - epsilon
-    return probs
+    epsilon_start = 1.0
+    epsilon_end = 0.05
+    epsilon_decay_rate = 0.9999
 
+    nA = env.action_space.n
 
-for episode in range(episodes):
-    state, _ = env.reset()
-    trajectory = []
-    done = False
+    Q = defaultdict(lambda: np.zeros(nA, dtype=np.float64))
+    N = defaultdict(lambda: np.zeros(nA, dtype=np.int64))
 
-    epsilon = get_epsilon(episode)
+    def get_epsilon(episode):
+        return max(epsilon_end, epsilon_start * (epsilon_decay_rate ** episode))
 
-    while not done:
-        probs = epsilon_greedy_probs(state, epsilon)
-        action = np.random.choice(np.arange(nA), p=probs)
+    def epsilon_greedy_probs(state, epsilon):
+        probs = np.ones(nA) * (epsilon / nA)
+        best_action = np.argmax(Q[state])
+        probs[best_action] += 1.0 - epsilon
+        return probs
 
-        next_state, reward, terminated, truncated, _ = env.step(action)
-        done = terminated or truncated
+    for episode in range(episodes):
+        state, _ = env.reset()
+        trajectory = []
+        done = False
 
-        trajectory.append((state, action, reward))
-        state = next_state
+        epsilon = get_epsilon(episode)
 
-    G = 0.0
-    visited = set()
+        while not done:
+            probs = epsilon_greedy_probs(state, epsilon)
+            action = np.random.choice(np.arange(nA), p=probs)
 
-    for t in reversed(range(len(trajectory))):
-        s, a, r = trajectory[t]
-        G = gamma * G + r
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
 
-        if (s, a) not in visited:
-            visited.add((s, a))
-            N[s][a] += 1
-            Q[s][a] += (G - Q[s][a]) / N[s][a]
+            trajectory.append((state, action, reward))
+            state = next_state
 
-    if (episode + 1) % 500_000 == 0:
-        print(f"Episode {episode + 1}, epsilon={get_epsilon(episode):.4f}")
+        G = 0.0
+        visited = set()
 
+        for t in reversed(range(len(trajectory))):
+            s, a, r = trajectory[t]
+            G = gamma * G + r
 
-policy = {s: int(np.argmax(a)) for s, a in Q.items()}
+            if (s, a) not in visited:
+                visited.add((s, a))
+                N[s][a] += 1
+                Q[s][a] += (G - Q[s][a]) / N[s][a]
 
-artifact = {
-    "policy": policy,
-    "episodes": episodes,
-    "gamma": gamma,
-    "epsilon_start": epsilon_start,
-    "epsilon_end": epsilon_end,
-    "epsilon_decay_rate": epsilon_decay_rate,
-}
+        if (episode + 1) % 500_000 == 0:
+            print(f"Episode {episode + 1}, epsilon={get_epsilon(episode):.4f}")
 
-os.makedirs("./outputs", exist_ok=True)
-with open("./outputs/policy.pkl", "wb") as f:
-    pickle.dump(artifact, f)
+    # Build final policy
+    policy = {s: int(np.argmax(a)) for s, a in Q.items()}
 
-print("Training finished.")
-print("Policy saved to ./outputs/policy.pkl")
+    artifact = {
+        "policy": policy,
+        "episodes": episodes,
+        "gamma": gamma,
+        "epsilon_start": epsilon_start,
+        "epsilon_end": epsilon_end,
+        "epsilon_decay_rate": epsilon_decay_rate,
+    }
+
+    
+    # save locally
+    local_path = "policy.pkl"
+    with open(local_path, "wb") as f:
+        pickle.dump(artifact, f)
+
+    print("Saved locally")
+
+    # upload to GCS (RELIABLE)
+    client = storage.Client()
+    bucket = client.bucket("kenneth-vertex-bucket-mlops")
+    blob = bucket.blob("model/policy.pkl")
+
+    blob.upload_from_filename(local_path)
+
+    print("Model uploaded to: gs://kenneth-vertex-bucket-mlops/model/policy.pkl")
+
+main()

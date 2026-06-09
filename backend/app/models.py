@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Float, TIMESTAMP, func
+from sqlalchemy import Boolean, Column, Float, Integer, String, TIMESTAMP, func
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -13,5 +13,8 @@ class Prediction(Base):
     dealer_card = Column(Integer, nullable=False)
     usable_ace = Column(Boolean, nullable=False)
     action = Column(String(20), nullable=False)
+    action_code = Column(Integer, nullable=True)
     confidence = Column(Float, nullable=True)
     premium = Column(Boolean, nullable=False, default=False)
+    policy_found = Column(Boolean, nullable=True)
+    policy_state = Column(String(50), nullable=True)
