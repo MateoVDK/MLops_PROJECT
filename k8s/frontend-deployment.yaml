@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: europe-west1-docker.pkg.dev/sublime-lyceum-498409-j6/blackjack/blackjack-frontend:latest
+          image: europe-west4-docker.pkg.dev/sublime-lyceum-498409-j6/blackjack/blackjack-frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80
