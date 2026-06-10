@@ -1,4 +1,4 @@
-name: Backend CI/CD
+name: Application CI/CD
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - "backend/**"
+      - "frontend/**"
       - "k8s/**"
       - ".github/workflows/backend-cicd.yml"
   workflow_dispatch:
@@ -21,21 +22,45 @@ env:
   GKE_LOCATION: ${{ vars.GKE_LOCATION || vars.GCP_REGION || 'europe-west1' }}
   ARTIFACT_REPOSITORY: ${{ vars.GAR_REPOSITORY || 'blackjack' }}
   K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'blackjack' }}
-  IMAGE_NAME: blackjack-api
+  API_IMAGE_NAME: blackjack-api
+  FRONTEND_IMAGE_NAME: blackjack-frontend
 
 jobs:
   build-push-deploy:
-    name: Build, push and deploy backend
+    name: Build, push and deploy app
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check required GitHub secrets
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GKE_CLUSTER_VALUE: ${{ secrets.GKE_CLUSTER || vars.GKE_CLUSTER }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$GCP_PROJECT_ID" ]; then
+            echo "Missing GitHub secret: GCP_PROJECT_ID"
+            exit 1
+          fi
+
+          if [ -z "$GCP_SA_KEY" ]; then
+            echo "Missing GitHub secret: GCP_SA_KEY"
+            exit 1
+          fi
+
+          if [ -z "$GKE_CLUSTER_VALUE" ]; then
+            echo "Missing GitHub secret or variable: GKE_CLUSTER"
+            exit 1
+          fi
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
@@ -50,9 +75,14 @@ jobs:
       - name: Set Docker image tags
         run: |
           set -euo pipefail
-          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/${IMAGE_NAME}"
-          echo "IMAGE_SHA=${IMAGE_BASE}:${GITHUB_SHA}" >> "${GITHUB_ENV}"
-          echo "IMAGE_LATEST=${IMAGE_BASE}:latest" >> "${GITHUB_ENV}"
+
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}"
+
+          echo "API_IMAGE_SHA=${IMAGE_BASE}/${API_IMAGE_NAME}:${GITHUB_SHA}" >> "${GITHUB_ENV}"
+          echo "API_IMAGE_LATEST=${IMAGE_BASE}/${API_IMAGE_NAME}:latest" >> "${GITHUB_ENV}"
+
+          echo "FRONTEND_IMAGE_SHA=${IMAGE_BASE}/${FRONTEND_IMAGE_NAME}:${GITHUB_SHA}" >> "${GITHUB_ENV}"
+          echo "FRONTEND_IMAGE_LATEST=${IMAGE_BASE}/${FRONTEND_IMAGE_NAME}:latest" >> "${GITHUB_ENV}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -64,31 +94,44 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_SHA }}
-            ${{ env.IMAGE_LATEST }}
+            ${{ env.API_IMAGE_SHA }}
+            ${{ env.API_IMAGE_LATEST }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/dockerfile
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE_SHA }}
+            ${{ env.FRONTEND_IMAGE_LATEST }}
 
       - name: Get GKE credentials
         run: |
           set -euo pipefail
-          if [ -z "${GKE_CLUSTER}" ]; then
-            echo "Missing GitHub secret: GKE_CLUSTER"
-            exit 1
-          fi
 
           gcloud container clusters get-credentials "${GKE_CLUSTER}" \
             --location="${GKE_LOCATION}" \
             --project="${PROJECT_ID}"
 
-      - name: Apply backend Kubernetes manifests
+      - name: Apply Kubernetes manifests
         run: |
           set -euo pipefail
+
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/postgres.yaml
           kubectl apply -f k8s/api-service.yaml
+          kubectl apply -f k8s/frontend-service.yaml
           kubectl apply -f k8s/api-deployment.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
 
-      - name: Update backend deployment image
+      - name: Update deployments with new images
         run: |
           set -euo pipefail
-          kubectl set image deployment/api api="${IMAGE_SHA}" -n "${K8S_NAMESPACE}"
+
+          kubectl set image deployment/api api="${API_IMAGE_SHA}" -n "${K8S_NAMESPACE}"
           kubectl rollout status deployment/api -n "${K8S_NAMESPACE}" --timeout=180s
+
+          kubectl set image deployment/frontend frontend="${FRONTEND_IMAGE_SHA}" -n "${K8S_NAMESPACE}"
+          kubectl rollout status deployment/frontend -n "${K8S_NAMESPACE}" --timeout=180s

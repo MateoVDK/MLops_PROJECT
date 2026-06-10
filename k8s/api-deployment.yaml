@@ -5,6 +5,11 @@ metadata:
   namespace: blackjack
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: api
@@ -15,10 +20,20 @@ spec:
     spec:
       containers:
         - name: api
-          image: blackjack-api:latest
+          image: europe-west1-docker.pkg.dev/sublime-lyceum-498409-j6/blackjack/blackjack-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:
             - name: DATABASE_URL
               value: postgresql://postgres:postgres@postgres-service:5432/postgres
+          volumeMounts:
+            - name: model-policy
+              mountPath: /app/app/predictor/policy.pkl
+              subPath: policy.pkl
+              readOnly: true
+      volumes:
+        - name: model-policy
+          configMap:
+            name: blackjack-policy
+            optional: true

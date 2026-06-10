@@ -1,4 +1,4 @@
-name: Vertex AI Training
+name: Vertex AI Train and Deploy Model
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
       - master
     paths:
       - "training/**"
+      - "data/**"
+      - "datasets/**"
       - "setup.py"
       - ".github/workflows/train.yml"
   workflow_dispatch:
@@ -21,76 +23,194 @@ concurrency:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
-  VERTEX_BUCKET: ${{ secrets.GCP_VERTEX_BUCKET || vars.GCP_VERTEX_BUCKET || 'kenneth-vertex-bucket-mlops' }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER || vars.GKE_CLUSTER }}
+  GKE_LOCATION: ${{ vars.GKE_LOCATION || vars.GCP_REGION || 'europe-west1' }}
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'blackjack' }}
+  VERTEX_BUCKET: kenneth-pierloz-mlops
+  TRAINING_SERVICE_ACCOUNT_NAME: github-actions-mlops
 
 jobs:
-  train:
-    name: Submit Vertex AI training job
+  train-and-deploy-model:
+    name: Train on Vertex AI and deploy model to GKE
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check required GitHub secrets
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GKE_CLUSTER_VALUE: ${{ secrets.GKE_CLUSTER || vars.GKE_CLUSTER }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$GCP_PROJECT_ID" ]; then
+            echo "Missing GitHub secret: GCP_PROJECT_ID"
+            exit 1
+          fi
+
+          if [ -z "$GCP_SA_KEY" ]; then
+            echo "Missing GitHub secret: GCP_SA_KEY"
+            exit 1
+          fi
+
+          if [ -z "$GKE_CLUSTER_VALUE" ]; then
+            echo "Missing GitHub secret or variable: GKE_CLUSTER"
+            exit 1
+          fi
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
 
+      - name: Set up kubectl credentials
+        run: |
+          set -euo pipefail
+
+          gcloud container clusters get-credentials "$GKE_CLUSTER" \
+            --location="$GKE_LOCATION" \
+            --project="$PROJECT_ID"
+
+      - name: Ensure required cloud resources exist
+        run: |
+          set -euo pipefail
+
+          BUCKET="${VERTEX_BUCKET#gs://}"
+
+          if ! gcloud storage buckets describe "gs://${BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+            gcloud storage buckets create "gs://${BUCKET}" \
+              --project="$PROJECT_ID" \
+              --location="$REGION" \
+              --uniform-bucket-level-access
+          fi
+
+          kubectl apply -f k8s/namespace.yaml
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Build trainer package
+      - name: Build trainer package from current source
         run: |
           set -euo pipefail
+
           python -m pip install --upgrade pip setuptools wheel
-          rm -rf dist build trainer.egg-info
+          rm -rf dist build *.egg-info training/*.egg-info
           python setup.py sdist --dist-dir dist
           ls -la dist
 
       - name: Upload trainer package to Cloud Storage
         run: |
           set -euo pipefail
+
           BUCKET="${VERTEX_BUCKET#gs://}"
           PACKAGE_URI="gs://${BUCKET}/packages/trainer-${GITHUB_SHA}.tar.gz"
           MODEL_OUTPUT_URI="gs://${BUCKET}/model/policy-${GITHUB_SHA}.pkl"
 
-          gsutil cp dist/trainer-*.tar.gz "${PACKAGE_URI}"
+          gcloud storage cp dist/trainer-*.tar.gz "$PACKAGE_URI"
 
-          echo "PACKAGE_URI=${PACKAGE_URI}" >> "${GITHUB_ENV}"
-          echo "MODEL_OUTPUT_URI=${MODEL_OUTPUT_URI}" >> "${GITHUB_ENV}"
+          echo "PACKAGE_URI=$PACKAGE_URI" >> "$GITHUB_ENV"
+          echo "MODEL_OUTPUT_URI=$MODEL_OUTPUT_URI" >> "$GITHUB_ENV"
+          echo "Training package uploaded to $PACKAGE_URI"
+          echo "Model will be written to $MODEL_OUTPUT_URI"
 
       - name: Submit Vertex AI custom training job
         run: |
           set -euo pipefail
+
           SHORT_SHA="${GITHUB_SHA::7}"
+          DISPLAY_NAME="blackjack-training-${SHORT_SHA}"
+          TRAINING_SERVICE_ACCOUNT="${TRAINING_SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-          cat > /tmp/vertex-job.yml <<EOF_JOB
-          displayName: blackjack-training-${SHORT_SHA}
-          jobSpec:
-            workerPoolSpecs:
-              - machineSpec:
-                  machineType: n1-standard-4
-                replicaCount: 1
-                pythonPackageSpec:
-                  executorImageUri: us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-12:latest
-                  packageUris:
-                    - ${PACKAGE_URI}
-                  pythonModule: training.train
-                  args:
-                    - --output_path=${MODEL_OUTPUT_URI}
-          EOF_JOB
+          python -c 'import json, os, pathlib; config = {"displayName": os.environ["DISPLAY_NAME"], "jobSpec": {"serviceAccount": os.environ["TRAINING_SERVICE_ACCOUNT"], "workerPoolSpecs": [{"machineSpec": {"machineType": "n1-standard-4"}, "replicaCount": 1, "pythonPackageSpec": {"executorImageUri": "us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-12:latest", "packageUris": [os.environ["PACKAGE_URI"]], "pythonModule": "training.train", "args": ["--output_path=" + os.environ["MODEL_OUTPUT_URI"]]}}]}}; pathlib.Path("/tmp/vertex-job.json").write_text(json.dumps(config, indent=2))'
 
-          cat /tmp/vertex-job.yml
+          cat /tmp/vertex-job.json
 
           gcloud ai custom-jobs create \
-            --project="${PROJECT_ID}" \
-            --region="${REGION}" \
-            --config=/tmp/vertex-job.yml
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --config=/tmp/vertex-job.json
+
+          CUSTOM_JOB_NAME="$(gcloud ai custom-jobs list \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --filter="displayName=$DISPLAY_NAME" \
+            --sort-by="~createTime" \
+            --limit=1 \
+            --format="value(name)")"
+
+          if [ -z "$CUSTOM_JOB_NAME" ]; then
+            echo "Could not find submitted Vertex AI custom job."
+            exit 1
+          fi
+
+          echo "CUSTOM_JOB_NAME=$CUSTOM_JOB_NAME" >> "$GITHUB_ENV"
+          echo "Submitted Vertex AI job: $CUSTOM_JOB_NAME"
+
+      - name: Wait for Vertex AI training to finish
+        run: |
+          set -euo pipefail
+
+          while true; do
+            STATE="$(gcloud ai custom-jobs describe "$CUSTOM_JOB_NAME" \
+              --project="$PROJECT_ID" \
+              --region="$REGION" \
+              --format="value(state)")"
+
+            echo "Vertex AI job state: $STATE"
+
+            case "$STATE" in
+              JOB_STATE_SUCCEEDED)
+                echo "Training succeeded."
+                break
+                ;;
+              JOB_STATE_FAILED|JOB_STATE_CANCELLED|JOB_STATE_EXPIRED)
+                echo "Training ended unsuccessfully: $STATE"
+                exit 1
+                ;;
+              *)
+                sleep 60
+                ;;
+            esac
+          done
+
+          echo "Vertex AI serverless custom training uses temporary compute. After this job finishes, Vertex AI shuts down the training workers."
+
+      - name: Download trained model artifact
+        run: |
+          set -euo pipefail
+
+          gcloud storage cp "$MODEL_OUTPUT_URI" /tmp/policy.pkl
+          ls -lh /tmp/policy.pkl
+
+      - name: Deploy trained model to Kubernetes
+        run: |
+          set -euo pipefail
+
+          kubectl create configmap blackjack-policy \
+            --namespace="$K8S_NAMESPACE" \
+            --from-file=policy.pkl=/tmp/policy.pkl \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
+
+          kubectl annotate configmap blackjack-policy \
+            --namespace="$K8S_NAMESPACE" \
+            mlops.github.sha="$GITHUB_SHA" \
+            mlops.model.uri="$MODEL_OUTPUT_URI" \
+            --overwrite
+
+          if kubectl get deployment api -n "$K8S_NAMESPACE" >/dev/null 2>&1; then
+            kubectl rollout restart deployment/api -n "$K8S_NAMESPACE"
+            kubectl rollout status deployment/api -n "$K8S_NAMESPACE" --timeout=180s
+          else
+            echo "API deployment does not exist yet. The model ConfigMap is ready and will be mounted when the API is deployed."
+          fi
