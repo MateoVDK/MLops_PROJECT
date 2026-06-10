@@ -1,5 +1,42 @@
 let isPremium = false;
 
+async function getErrorMessage(response) {
+    if (response.status === 429) {
+        return "Rate limit reached: max 10 requests per hour for free users.";
+    }
+
+    const responseCopy = response.clone();
+
+    try {
+        const errorData = await responseCopy.json();
+        return errorData.detail || errorData.message || "Request failed";
+    } catch {
+        try {
+            const text = await responseCopy.text();
+            return text || "Request failed";
+        } catch {
+            return "Request failed";
+        }
+    }
+}
+
+function showError(message) {
+    alert(message);
+
+    document.getElementById("result").textContent = message;
+    document.getElementById("result").style.color = "red";
+
+    document.getElementById("explanation").textContent = "";
+    document.getElementById("confidence-bar").style.width = "0%";
+    document.getElementById("confidence-label").textContent = "";
+}
+
+// Detect environment (local dev vs Kubernetes)
+const API_URL =
+    window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+        ? "http://127.0.0.1:8000/predict"   // local port-forward
+        : "/api/predict";                   // Kubernetes ingress
+
 // Toggle premium
 document.getElementById("premium-btn").addEventListener("click", () => {
     isPremium = !isPremium;
@@ -25,7 +62,7 @@ document.getElementById("predict-btn").addEventListener("click", async () => {
     };
 
     try {
-        const response = await fetch("/api/predict", {
+        const response = await fetch(API_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
@@ -33,17 +70,24 @@ document.getElementById("predict-btn").addEventListener("click", async () => {
 
         const data = await response.json();
 
-        if (!response.ok) {
-            document.getElementById("result").textContent = data.detail;
-            document.getElementById("explanation").textContent =
-                "Premium feature — buy Premium to unlock detailed reasoning.";
-            document.getElementById("confidence-bar").style.width = "0%";
-            document.getElementById("confidence-label").textContent = "Premium only";
+        // ERROR HANDLING (rate limit, invalid input, etc.)
+        if (!response.ok || data.error || (data.detail && !data.action)) {
+            const errorMessage =
+                data.error ||
+                data.detail ||
+                (await getErrorMessage(response)) ||
+                "Request failed";
+
+            showError(errorMessage);
+
             return;
         }
 
+        // SUCCESSFUL RESPONSE
         document.getElementById("result").textContent = data.action;
+        document.getElementById("result").style.color = "white";
 
+        // Confidence bar
         if (data.confidence !== undefined) {
             const pct = Math.round(data.confidence * 100);
             document.getElementById("confidence-bar").style.width = pct + "%";
@@ -53,6 +97,7 @@ document.getElementById("predict-btn").addEventListener("click", async () => {
             document.getElementById("confidence-label").textContent = "Premium only";
         }
 
+        // Explanation
         if (data.explanation !== undefined) {
             document.getElementById("explanation").textContent = data.explanation;
         } else {
@@ -62,10 +107,7 @@ document.getElementById("predict-btn").addEventListener("click", async () => {
 
     } catch (error) {
         console.error(error);
-        document.getElementById("result").textContent = "Could not contact API";
-        document.getElementById("explanation").textContent =
-            "Premium feature — buy Premium to unlock detailed reasoning.";
-        document.getElementById("confidence-bar").style.width = "0%";
-        document.getElementById("confidence-label").textContent = "Premium only";
+
+        showError("Could not contact API");
     }
 });
